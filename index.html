@@ -199,11 +199,167 @@
             margin: 30px 0;
 
         }
+
+
+        /* ===== BENEFICIARY PRODUCT CHECKLIST ===== */
+        .product-list-title {
+            margin: 14px 0 8px;
+            color: #0A2F6B;
+        }
+
+        .product-group {
+            margin: 10px 0 14px;
+        }
+
+        .product-group-title {
+            font-weight: 800;
+            color: #0A2F6B;
+            margin-bottom: 5px;
+        }
+
+        .product-item {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin: 7px 0;
+            padding-left: 2px;
+            font-size: 15px;
+        }
+
+        .product-item input[type="checkbox"] {
+            width: 19px;
+            height: 19px;
+            margin: 0;
+            cursor: pointer;
+            accent-color: #198754;
+            flex: 0 0 auto;
+        }
+
+        /* ===== QR CODE MANAGER ===== */
+        .qr-manager {
+            margin-top: 15px;
+        }
+
+        .qr-package {
+            border: 1px solid #d9e1ec;
+            border-left: 5px solid #0A2F6B;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            background: #fff;
+        }
+
+        .qr-package-title {
+            color: #0A2F6B;
+            font-weight: 700;
+            margin-bottom: 10px;
+            font-size: 17px;
+        }
+
+        .qr-upload-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .qr-upload-row input[type="file"] {
+            flex: 1;
+            min-width: 220px;
+            padding: 8px;
+        }
+
+        .qr-save-btn {
+            background: #198754;
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .qr-save-btn:hover {
+            background: #157347;
+        }
+
+        .qr-status {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #198754;
+            font-weight: 600;
+        }
+
+        .beneficiary-qr-wrap {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            background: #fafafa;
+            text-align: center;
+            max-width: 230px;
+        }
+
+        .beneficiary-qr-wrap strong {
+            display: block;
+            color: #0A2F6B;
+            margin-bottom: 8px;
+        }
+
+        .beneficiary-qr {
+            display: block;
+            width: 180px;
+            height: 180px;
+            object-fit: contain;
+            margin: 0 auto;
+            background: #fff;
+        }
+
+        @media (max-width: 600px) {
+            .beneficiary-qr-wrap {
+                max-width: 210px;
+            }
+
+            .beneficiary-qr {
+                width: 170px;
+                height: 170px;
+            }
+
+            .qr-upload-row {
+                align-items: stretch;
+            }
+
+            .qr-save-btn {
+                width: 100%;
+            }
+        }
+
+        /* ===== WATERMARK LOGO ===== */
+        .background-logo {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+
+            width: 420px;
+            max-width: 70vw;
+
+            opacity: 0.30;
+
+            z-index: -1;
+            pointer-events: none;
+            user-select: none;
+        }
+
     </style>
 
 </head>
 
 <body>
+
+    <!-- Background Watermark Logo -->
+    <img src="20x20.png" class="background-logo" alt="Walang Gutom Logo">
+    
     <div class="header">
         <h1>DSWD-preorderingSystem</h1>
         <p>Food Preference Summary and Package Generator</p>
@@ -226,7 +382,15 @@
 
         <h2>Beneficiary Food Counter</h2>
 
-        <input type="file" id="fileInput">
+        <input type="file" id="fileInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+
+        <div class="box qr-manager" id="qrManagerBox" style="display:none;">
+            <h3>QR Code per Package</h3>
+            <p style="margin-bottom:12px;color:#666;">
+                Mag-upload ng QR code image para sa bawat package. I-click ang <b>Save QR</b> pagkatapos pumili ng larawan.
+            </p>
+            <div id="qrPackageList"></div>
+        </div>
         <button onclick="resetSession()" style="
     margin-top:10px;
     margin-bottom:10px;
@@ -272,6 +436,10 @@
 
         <script>
             let beneficiaryPackages = [];
+
+            // QR code storage per package
+            let qrCodes = JSON.parse(localStorage.getItem("packageQRCodes") || "{}");
+            let pendingQRCodes = {};
 
             // NEW
             let municipalityData = {};
@@ -414,6 +582,7 @@
                 displayDuplicates(comboCount, comboNames);
                 restoreClaimed();
                 displayMunicipalityLists();
+                renderQRPackageList();
                 searchBeneficiary();
             }
 
@@ -602,6 +771,243 @@
 
             }
 
+            // ==========================
+            // QR CODE UPLOAD / SAVE
+            // ==========================
+
+            function getPackageNames() {
+                return [...new Set(
+                    beneficiaryPackages
+                        .map(item => item.package)
+                        .filter(Boolean)
+                )].sort((a, b) => {
+                    const na = parseInt(a.replace(/\D/g, ""), 10) || 0;
+                    const nb = parseInt(b.replace(/\D/g, ""), 10) || 0;
+                    return na - nb || a.localeCompare(b);
+                });
+            }
+
+            function renderQRPackageList() {
+                const manager = document.getElementById("qrManagerBox");
+                const list = document.getElementById("qrPackageList");
+
+                if (!manager || !list) return;
+
+                const packages = getPackageNames();
+
+                if (!packages.length) {
+                    manager.style.display = "none";
+                    list.innerHTML = "";
+                    return;
+                }
+
+                manager.style.display = "block";
+
+                list.innerHTML = packages.map(pkg => `
+                    <div class="qr-package">
+                        <div class="qr-package-title">📦 ${pkg}</div>
+
+                        <div class="qr-upload-row">
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                onchange="selectQRCode('${pkg}', this)"
+                            >
+
+                            <button
+                                type="button"
+                                class="qr-save-btn"
+                                onclick="saveQRCode('${pkg}')"
+                            >
+                                💾 Save QR
+                            </button>
+                        </div>
+
+                        <div class="qr-status" id="qrStatus-${safeId(pkg)}">
+                            ${qrCodes[pkg] ? "✅ QR Code saved." : "No QR Code saved yet."}
+                        </div>
+                    </div>
+                `).join("");
+            }
+
+            function safeId(text) {
+                return String(text).replace(/[^a-zA-Z0-9_-]/g, "_");
+            }
+
+            function selectQRCode(packageName, input) {
+                const file = input.files && input.files[0];
+
+                if (!file) {
+                    delete pendingQRCodes[packageName];
+                    return;
+                }
+
+                if (!file.type.startsWith("image/")) {
+                    alert("Pumili lamang ng image file para sa QR Code.");
+                    input.value = "";
+                    return;
+                }
+
+                pendingQRCodes[packageName] = file;
+
+                const status = document.getElementById("qrStatus-" + safeId(packageName));
+                if (status) {
+                    status.textContent = "📷 QR image selected. I-click ang Save QR.";
+                    status.style.color = "#0A2F6B";
+                }
+            }
+
+            function saveQRCode(packageName) {
+                const file = pendingQRCodes[packageName];
+
+                if (!file) {
+                    alert("Pumili muna ng QR Code image para sa " + packageName + ".");
+                    return;
+                }
+
+                const reader = new FileReader();
+
+                reader.onload = function(event) {
+                    const dataUrl = event.target.result;
+
+                    qrCodes[packageName] = dataUrl;
+
+                    try {
+                        localStorage.setItem(
+                            "packageQRCodes",
+                            JSON.stringify(qrCodes)
+                        );
+                    } catch (error) {
+                        console.warn("Hindi na-save sa browser storage ang QR:", error);
+                        alert(
+                            "Na-upload ang QR Code pero masyadong malaki ang image para sa browser storage. " +
+                            "Bawasan ang laki ng image para ma-save ito."
+                        );
+                    }
+
+                    delete pendingQRCodes[packageName];
+
+                    const status = document.getElementById("qrStatus-" + safeId(packageName));
+                    if (status) {
+                        status.textContent = "✅ QR Code saved para sa " + packageName + ".";
+                        status.style.color = "#198754";
+                    }
+
+                    searchBeneficiary();
+                };
+
+                reader.onerror = function() {
+                    alert("Hindi mabasa ang QR Code image.");
+                };
+
+                reader.readAsDataURL(file);
+            }
+
+
+            // ===== PRODUCT CHECKBOX HELPERS =====
+            // A GO/GROW/GLOW cell may contain several products separated by
+            // line breaks, commas, semicolons, bullets, or numbered lines.
+            function splitProducts(value) {
+                if (!value) return [];
+
+                return String(value)
+                    .replace(/\r/g, "\n")
+                    .replace(/•/g, "\n")
+                    .replace(/·/g, "\n")
+                    .replace(/\s*(?:\|\||;)\s*/g, "\n")
+                    .split(/\n|,(?=\s*[A-Za-z0-9])/)
+                    .map(x => x.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
+                    .filter(Boolean);
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function productCheckboxKey(name, packageName, category, product) {
+                return [
+                    "productCheck",
+                    name,
+                    packageName,
+                    category,
+                    product
+                ].join("||");
+            }
+
+            function getProductCheckState(key) {
+                const saved = JSON.parse(
+                    localStorage.getItem("beneficiaryProductChecks") || "{}"
+                );
+                return saved[key] === true;
+            }
+
+            function toggleProductCheck(key, checked) {
+                const saved = JSON.parse(
+                    localStorage.getItem("beneficiaryProductChecks") || "{}"
+                );
+                saved[key] = checked;
+                localStorage.setItem(
+                    "beneficiaryProductChecks",
+                    JSON.stringify(saved)
+                );
+            }
+
+            function buildProductChecklist(item) {
+                const groups = [
+                    { category: "GO", value: item.go },
+                    { category: "GROW", value: item.grow },
+                    { category: "GLOW", value: item.glow }
+                ];
+
+                let html = "";
+
+                groups.forEach(group => {
+                    const products = splitProducts(group.value);
+
+                    if (!products.length) return;
+
+                    html += `
+                        <div class="product-group">
+                            <div class="product-group-title">${escapeHtml(group.category)}</div>
+                            ${products.map(product => {
+                                const key = productCheckboxKey(
+                                    item.name,
+                                    item.package,
+                                    group.category,
+                                    product
+                                );
+
+                                return `
+                                    <label class="product-item">
+                                        <input
+                                            type="checkbox"
+                                            ${getProductCheckState(key) ? "checked" : ""}
+                                            onchange="toggleProductCheck('${escapeHtml(key)}', this.checked)"
+                                        >
+                                        <span>${escapeHtml(product)}</span>
+                                    </label>
+                                `;
+                            }).join("")}
+                        </div>
+                    `;
+                });
+
+                if (!html) {
+                    return `
+                        <p style="color:#777;margin:8px 0;">
+                            Walang product item na makita sa GO/GROW/GLOW.
+                        </p>
+                    `;
+                }
+
+                return `<div class="product-list">${html}</div>`;
+            }
+
             function searchBeneficiary() {
 
                 const keyword = document
@@ -646,11 +1052,26 @@
 
             <b>Name:</b> ${item.name}<br><br>
 
-            <b>GO:</b> ${item.go}<br>
-            <b>GROW:</b> ${item.grow}<br>
-            <b>GLOW:</b> ${item.glow}<br><br>
+            <b>Type:</b> ${item.type}<br>
 
-            <b>Type:</b> ${item.type}<br><br>
+            <div class="product-list-title"><b>Products</b></div>
+            ${buildProductChecklist(item)}
+
+            ${qrCodes[item.package]
+                ? `
+                    <div class="beneficiary-qr-wrap">
+                        <strong>QR Code - ${item.package}</strong>
+                        <img
+                            src="${qrCodes[item.package]}"
+                            class="beneficiary-qr"
+                            alt="QR Code for ${item.package}"
+                        >
+                    </div>
+                  `
+                : ""
+            }
+
+            <br>
 
             ${item.claimed
                             ?
