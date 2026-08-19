@@ -1306,14 +1306,22 @@ margin-bottom:15px;
             }
             function resetSession() {
 
-                if (!confirm("Are you sure you want to reset all claimed records?")) {
+                if (!confirm(
+                    "Are you sure you want to reset the entire session?\\n\\n" +
+                    "This will permanently remove saved claimed records, saved QR Code images, " +
+                    "and saved product checklist states from this browser."
+                )) {
                     return;
                 }
+
+                // Remove ALL session-related saved data
                 localStorage.removeItem("claimedBeneficiaries");
                 localStorage.removeItem("beneficiaryPackages");
                 localStorage.removeItem("municipalityData");
+                localStorage.removeItem("packageQRCodes");
+                localStorage.removeItem("beneficiaryProductChecks");
 
-                // I-reset ang claimed status sa memory
+                // Reset in-memory data as well
                 beneficiaryPackages.forEach(item => {
                     item.claimed = false;
                 });
@@ -1324,11 +1332,25 @@ margin-bottom:15px;
                     });
                 });
 
+                // IMPORTANT: clear saved QR images from memory
+                qrCodes = {};
+                pendingQRCodes = {};
+
+                // Clear the search input so old results/QR images are not shown
+                const searchInput = document.getElementById("searchName");
+                if (searchInput) {
+                    searchInput.value = "";
+                }
+
                 // Refresh UI
                 searchBeneficiary();
                 displayMunicipalityLists();
+                renderQRPackageList();
 
-                alert("Session has been reset.");
+                alert(
+                    "Session has been reset successfully.\\n\\n" +
+                    "Claimed records, saved QR Code images, and product checklist states have been cleared."
+                );
             }
 
             async function exportMunicipality(muni) {
